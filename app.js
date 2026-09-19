@@ -334,56 +334,119 @@ function competitorCandidates(company){
   });
 }
 function runPipeline(){
- const company=$('company').value.trim();
- $('runStatus').style.display='inline-block';
- if(!company){$('runStatus').textContent='Enter a company name.';return}
- const ready=docs.filter(d=>d.status==='ready');
- if(!ready.length){$('runStatus').textContent='Upload at least one PDF and wait for parsing to finish.';return}
- $('runStatus').textContent='Running report selection and extraction…';
- selectPrimary(company);
- if(!primary){$('runStatus').textContent='Could not select a primary report.';return}
- extractNaics();
+  const company=$('company').value.trim();
+  $('runStatus').style.display='inline-block';
+  if(!company){$('runStatus').textContent='Enter a company name.';return}
+  const ready=docs.filter(function(d){return d.status==='ready';});
+  if(!ready.length){$('runStatus').textContent='Upload at least one PDF and wait for parsing to finish.';return}
+  $('runStatus').textContent='Analyzing reports…';
 
- const sg=extractSizeGrowth(); autoSignal('sizeGrowth',sg.value,sg.source,sg.ev,signalDefs[0].keys);
+  const selection=selectPrimary(company);
+  if(!selection.accepted){
+    for(const s of signalDefs){
+      autoSignal(s.id,'Not analyzed because no uploaded report adequately represents this company.','Not found in provided sources.',[],s.keys);
+    }
+    renderCompetitorRows([]);
+    $('compConf').className='conf low';
+    $('compConf').textContent='no adequate primary report';
+    $('missing').value='A directly relevant industry report is required before the pipeline can produce defensible industry statistics for this company.';
+    $('runStatus').textContent='Stopped: no uploaded report adequately represents this company’s primary industry.';
+    updateAudit();
+    return;
+  }
 
- const reg=regulationText(); autoSignal('regulation',reg.length?`The uploaded evidence indicates regulatory/compliance pressure around ${/antitrust/i.test(reg[0].snippet)?'antitrust and competition policy':/cyber/i.test(reg[0].snippet)?'cybersecurity and data protection':'industry regulation, policy and compliance'}. Review the cited excerpt and keep only pressures explicitly supported by the report.`:'Not found in provided sources.',reg[0]?citation(reg[0]):'',reg,signalDefs.find(s=>s.id==='regulation').keys);
+  extractNaics();
 
- const sup=supplierPowerText();
- let supVal='Not found in provided sources.';
- if(sup.length){
-   const direct=flat(sup[0].snippet).match(/Supplier Power\s+(Low|Moderate|High)(?:\s+(Steady|Increasing|Decreasing))?/i);
-   supVal=direct?`IBISWorld rates supplier power as ${direct[1]}${direct[2]?` and ${direct[2].toLowerCase()}`:''}. The report also discusses technology, infrastructure and talent dependencies; use the cited evidence to describe fragility without assuming that dependency automatically means supplier concentration.`:
-   `The reports identify software-industry dependencies such as cloud/infrastructure, computing resources or specialized talent. However, supplier concentration should be stated only where the cited evidence directly supports it.`;
- }
- autoSignal('supply',supVal,sup[0]?citation(sup[0]):'',sup,signalDefs.find(s=>s.id==='supply').keys);
+  const sg=extractSizeGrowth();
+  autoSignal('sizeGrowth',sg.value,sg.source,sg.ev,signalDefs[0].keys);
 
- const mm=parseMajorMarkets(), custEv=buyerPowerText();
- let custVal='Not found in provided sources.', custSrc='';
- if(mm){
-   custVal=`Customer demand is spread across ${mm.pairs.length} reported market segments. `+mm.pairs.slice(0,6).map(x=>`${x.segment} (${x.share}%)`).join(', ')+`. Assess concentration from this distribution rather than from company-level customer anecdotes.`;
-   custSrc=citation(mm.e); custEv.unshift(mm.e);
- }
- autoSignal('customers',custVal,custSrc,custEv,signalDefs.find(s=>s.id==='customers').keys);
+  const regPage=findPageEvidence(primary,/Regulation\s*&\s*Policy/i,'Regulation & Policy');
+  let regValue='Not found in provided sources.';
+  if(regPage){
+    const f=flat(regPage.snippet);
+    const rating=f.match(/Regulation\s*&\s*Policy\s+(Low|Moderate|High)\s+(Steady|Increasing|Decreasing)/i);
+    const topics=[];
+    if(/copyright|intellectual property/i.test(f))topics.push('copyright/IP');
+    if(/privacy|CCPA|CPRA|GDPR|data protection/i.test(f))topics.push('data privacy');
+    if(/COPPA|parental consent|children/i.test(f))topics.push('child-data privacy');
+    if(/antitrust|merger|acquisition/i.test(f))topics.push('antitrust/M&A scrutiny');
+    if(/cybersecurity|security audit/i.test(f))topics.push('cybersecurity');
+    regValue='IBISWorld rates Regulation & Policy as '+(rating?(rating[1].toUpperCase()+' and '+rating[2].toUpperCase()):'described in the cited section')+'. Key pressure areas in the report include '+(topics.length?topics.join(', '):'the regulatory issues described in the cited section')+'.';
+  }
+  autoSignal('regulation',regValue,regPage?citation(regPage):'',regPage?[regPage]:[],signalDefs.find(function(s){return s.id==='regulation';}).keys);
 
- const tr=trendText(); let trVal=tr.length?evidenceSnippet(tr[0],signalDefs.find(s=>s.id==='trend').keys):'Not found in provided sources.';
- if(tr.length && /artificial intelligence|\bAI\b|generative/i.test(tr.slice(0,3).map(x=>x.snippet).join(' ')))trVal=`Analyst interpretation: AI-enabled product and workflow transformation is the strongest five-year trend in the selected report. Source evidence emphasizes continued AI integration, automation and accelerated creative/productivity workflows.`;
- autoSignal('trend',trVal,tr[0]?citation(tr[0]):'',tr,signalDefs.find(s=>s.id==='trend').keys);
+  const powerPage=findPageEvidence(primary,/Suppliers:/i,'Buyer & Supplier Power');
+  let supplyValue='Not found in provided sources.';
+  if(powerPage){
+    const f=flat(powerPage.snippet);
+    const rating=f.match(/(Low|Moderate|High)\s+(Steady|Increasing|Decreasing)\s+Suppliers:/i);
+    const details=[];
+    if(/NVIDIA.*92\.0%/i.test(f))details.push('NVIDIA controlled about 92% of the discrete GPU market');
+    if(/AWS.*Azure.*GCP|Azure.*GCP/i.test(f))details.push('AWS, Azure and GCP provide cloud alternatives');
+    if(/Apple and Google|Apple.*Google/i.test(f))details.push('Apple and Google act as mobile-platform gatekeepers');
+    if(/switching costs|limited alternatives|Dell|HP|Cisco/i.test(f))details.push('specialized hardware can create switching costs and limited alternatives');
+    supplyValue='Supplier power is '+(rating?(rating[1].toUpperCase()+' and '+rating[2].toUpperCase()):'described in the report')+'. '+(details.length?details.join('; ')+'. ':'')+'Analyst interpretation: fragility is tied to specific concentrated dependencies or switching costs, not to software inputs in general.';
+  }
+  autoSignal('supply',supplyValue,powerPage?citation(powerPage):'',powerPage?[powerPage]:[],signalDefs.find(function(s){return s.id==='supply';}).keys);
 
- const th=threatText(); let thVal=th.length?evidenceSnippet(th[0],signalDefs.find(s=>s.id==='threat').keys):'Not found in provided sources.';
- if(th.length && /open-source|open source/i.test(th.slice(0,3).map(x=>x.snippet).join(' ')))thVal=`Analyst interpretation: intensifying free/open-source competition is the strongest structural threat identified in the selected report because it can pressure pricing, market share and switching behavior while narrowing functional gaps with proprietary tools.`;
- autoSignal('threat',thVal,th[0]?citation(th[0]):'',th,signalDefs.find(s=>s.id==='threat').keys);
+  const mm=parseMajorMarkets();
+  const buyerPage=findPageEvidence(primary,/Buyers:/i,'Buyer & Supplier Power');
+  let customerValue='Not found in provided sources.',customerSource='';
+  if(mm){
+    const top3=[...mm.pairs].sort(function(a,b){return Number(b.share)-Number(a.share);}).slice(0,3).reduce(function(sum,x){return sum+Number(x.share);},0);
+    let buyer='';
+    if(buyerPage){
+      const fm=flat(buyerPage.snippet).match(/(Low|Moderate|High)\s+(Steady|Increasing|Decreasing)\s+Buyers:/i);
+      if(fm)buyer=' IBISWorld rates buyer power as '+fm[1].toUpperCase()+' and '+fm[2].toUpperCase()+'.';
+    }
+    customerValue='2026 demand is split across reported customer markets as follows: '+mm.pairs.map(function(x){return x.segment+' '+x.share+'%';}).join('; ')+'. The top three verticals account for '+top3.toFixed(1)+'% of revenue.'+buyer+' Analyst interpretation: vertical revenue concentration can coexist with a fragmented underlying buyer base.';
+    customerSource=citation(mm.e);
+  }else if(buyerPage){
+    customerValue=bestSentenceFrom(buyerPage.snippet,['fragmented','buyers','businesses','customers'])||'Buyer structure is described in the cited section.';
+    customerSource=citation(buyerPage);
+  }
+  autoSignal('customers',customerValue,customerSource,buyerPage?[buyerPage]:[],signalDefs.find(function(s){return s.id==='customers';}).keys);
 
- const comps=competitorCandidates(company);renderCompetitorRows(comps);
- $('compConf').className='conf '+(comps.length>=3?'high':comps.length?'med':'low');$('compConf').textContent=comps.length>=3?'3–5 competitors found':comps.length?'review':'not found';
- const ce=bestPages(['major players','market share','competition','challenger'],[primary],6,['Market Share','Competitive Forces']);
- renderEvidence('compEvidence',ce,['market share','competition'],e=>{const i=[0,1,2,3,4].find(i=>!$('compSrc'+i)?.value);if(i!==undefined)$('compSrc'+i).value=citation(e);updateAudit()});
+  const outlookPages=primary.pages.filter(function(p){return /Outlook/i.test(flat(p.text))||/over the next five years/i.test(flat(p.text));});
+  const outlookText=outlookPages.map(function(p){return flat(p.text);}).join(' ');
+  const trendEv=outlookPages.slice(0,3).map(function(p){return pageEvidence({...p,doc:primary.name,title:primary.title,section:'Outlook'},p.text);});
+  let trendValue='Not found in provided sources.';
+  if(/AI and generative tools|generative AI|artificial intelligence/i.test(outlookText)){
+    trendValue='Analyst interpretation — biggest five-year trend: AI-driven and generative-AI-enabled workflows. The outlook emphasizes continued AI integration, automation, scalable infrastructure and AI-assisted product capabilities.';
+  }else if(/cybersecurity|zero-trust/i.test(outlookText)){
+    trendValue='Analyst interpretation — biggest five-year trend: rising investment in cybersecurity and zero-trust capabilities as software vendors compete on trust, resilience and compliance.';
+  }else if(outlookPages.length){
+    trendValue=bestSentenceFrom(outlookText,['will','next five years','outlook','increasingly'])||'See cited outlook section.';
+  }
+  autoSignal('trend',trendValue,trendEv[0]?citation(trendEv[0]):'',trendEv,signalDefs.find(function(s){return s.id==='trend';}).keys);
 
- refreshMissing();
- $('runStatus').textContent=`Done. Selected “${primary.title}” from ${ready.length} uploaded report${ready.length===1?'':'s'}. Review evidence and edit any synthesis before export.`;
- updateAudit();
+  let threatValue='Not found in provided sources.';
+  if(/free and open-source alternatives.*(?:rise|intensif)|threat posed by free and open-source alternatives/i.test(outlookText)){
+    threatValue='Analyst interpretation — biggest five-year threat: increasing competition from free and open-source alternatives, which the report expects to narrow functional gaps and pressure pricing and differentiation.';
+  }else if(/market saturation|saturated/i.test(outlookText)){
+    threatValue='Analyst interpretation — biggest five-year threat: market saturation, which the report expects to slow growth and make new-customer acquisition harder.';
+  }else if(/cyber attacks|cybersecurity/i.test(outlookText)){
+    threatValue='Analyst interpretation — biggest five-year threat: escalating cybersecurity risk and the cost of maintaining trusted, resilient platforms.';
+  }else if(outlookPages.length){
+    threatValue=bestSentenceFrom(outlookText,['threat','risk','challenge','pressure','slower'])||'See cited outlook section.';
+  }
+  autoSignal('threat',threatValue,trendEv[0]?citation(trendEv[0]):'',trendEv,signalDefs.find(function(s){return s.id==='threat';}).keys);
+
+  const comps=competitorCandidates(company);
+  renderCompetitorRows(comps);
+  $('compConf').className='conf '+(comps.length>=3?'high':comps.length?'med':'low');
+  $('compConf').textContent=comps.length>=3?'3 source-backed competitors':'insufficient competitor data';
+  const compEvidence=extractMarketShareRows(primary).map(function(x){return x.evidence;}).slice(0,4);
+  renderEvidence('compEvidence',compEvidence,['market share','company'],function(e){
+    const i=[0,1,2].find(function(i){return !$('compSrc'+i)?.value;});
+    if(i!==undefined)$('compSrc'+i).value=citation(e);
+    updateAudit();
+  });
+
+  refreshMissing();
+  $('runStatus').textContent='Done. "'+primary.title+'" selected as the primary report. Industry-level statistics were kept inside that report rather than blended across reports.';
+  updateAudit();
 }
-$('run').onclick=runPipeline;
-
 function currentData(){
  const signals={};for(const s of signalDefs)signals[s.id]={label:s.label,value:$('val-'+s.id).value.trim(),source:$('src-'+s.id).value.trim()};
  const competitors=[0,1,2,3,4].map(i=>({name:$('compName'+i)?.value.trim()||'',share:$('compShare'+i)?.value.trim()||'',why:$('compWhy'+i)?.value.trim()||'',source:$('compSrc'+i)?.value.trim()||''})).filter(x=>x.name||x.share||x.source);
