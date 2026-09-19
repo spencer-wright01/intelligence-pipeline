@@ -166,26 +166,17 @@ function bestSentenceFrom(text,terms){
 }
 
 function companyMetrics(d,company){
- const low=company.toLowerCase(), re=new RegExp(`\\b${rxesc(company)}\\b`,'ig');
- let mentions=0, listed=false, major=false, share=null, shareEv=null;
- for(const p of d.pages){
-   const f=flat(p.text); const m=f.match(re); mentions+=m?m.length:0;
-   if(/What.?s Included|Companies/i.test(f) && new RegExp(`\\b${rxesc(company)}\\b`,'i').test(f))listed=true;
-   if(/Major Players|Market Share/i.test(f) && new RegExp(`\\b${rxesc(company)}\\b`,'i').test(f))major=true;
-   const idx=f.search(new RegExp(`\\b${rxesc(company)}\\b`,'i'));
-   if(idx>=0 && /Major Players|Market Share/i.test(f)){
-     const sn=around(f,idx,260);
-     const after=sn.slice(Math.max(0,sn.toLowerCase().indexOf(company.toLowerCase())+company.length));
-     const nums=[...after.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(x=>Number(x[1]));
-     if(nums.length){share=nums[0];shareEv=pageEvidence({...p,doc:d.name,title:d.title},sn)}
-     else{
-       const compact=after.match(/^\s*(?:\$?\s*)?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s|$)/);
-       if(compact){share=Number(compact[2]);shareEv=pageEvidence({...p,doc:d.name,title:d.title},sn)}
-     }
-   }
- }
- const score=(share!=null?45+Math.min(share,35):0)+(listed?18:0)+(major?12:0)+Math.min(mentions,12);
- return {mentions,listed,major,share,shareEv,score};
+  const shares=extractMarketShareRows(d);
+  const share=shares.find(x=>x.name.toLowerCase()===company.toLowerCase())||null;
+  const listed=reportCompanyList(d).some(x=>x.toLowerCase()===company.toLowerCase());
+  let mentions=0,detail=false;
+  for(const p of d.pages){
+    const f=flat(p.text);
+    mentions+=(f.match(new RegExp("\\b"+rxesc(company)+"\\b","gi"))||[]).length;
+    if(/Company Total Revenue|Industry Specific Revenue|Industry Market Share/i.test(f) && new RegExp("\\b"+rxesc(company)+"\\b","i").test(f))detail=true;
+  }
+  const score=(share?100+Math.min(share.upper*2,60):0)+(detail?35:0)+(listed?20:0)+Math.min(mentions,20);
+  return {mentions:mentions,listed:listed,major:!!share,share:share?share.upper:null,shareObj:share,detail:detail,score:score};
 }
 function selectPrimary(company){
  const ranked=docs.filter(d=>d.status==='ready').map(d=>({d,...companyMetrics(d,company)})).sort((a,b)=>b.score-a.score);
