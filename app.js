@@ -51,11 +51,14 @@ function renderSignals(){
  </div><div id="ev-${s.id}"></div></div>`).join('');
 }
 function renderCompetitorRows(rows=[]){
-  const use=[...rows];
-  while(use.length<5)use.push({});
-  $('competitors').innerHTML=use.slice(0,5).map((r,i)=>`<tr>
+  const use=rows.filter(r=>r && r.name).slice(0,5);
+  if(!use.length){
+    $('competitors').innerHTML='<tr><td colspan="4" class="muted">Run the pipeline to populate source-backed competitors.</td></tr>';
+    return;
+  }
+  $('competitors').innerHTML=use.map((r,i)=>`<tr>
     <td><input id="compName${i}" value="${esc(r.name||'')}"></td>
-    <td><input id="compShare${i}" value="${esc(r.share||'')}" placeholder="Not reported"></td>
+    <td><input id="compShare${i}" value="${esc(r.share||'Not reported')}" placeholder="Not reported"></td>
     <td><textarea id="compWhy${i}" style="min-height:62px">${esc(r.why||'')}</textarea></td>
     <td><textarea id="compSrc${i}" style="min-height:62px">${esc(r.source||'')}</textarea></td>
   </tr>`).join('');
@@ -242,42 +245,84 @@ function autoSignal(id,value,source,ev,keys){
 }
 function competitorCandidates(company){
  if(!primary)return [];
- const candidates=new Map();
+
+ // 1) Pull the report's own named-company list from the About This Industry section.
+ const listed=[];
+ for(const p of primary.pages.slice(0,4)){
+   const lines=String(p.text||'').split(/\n+/).map(x=>clean(x)).filter(Boolean);
+   let inCompanies=false;
+   for(const line of lines){
+     if(/^Companies$/i.test(line)){inCompanies=true;continue}
+     if(!inCompanies)continue;
+     if(/^Information\b|^Related Industries\b|^Related Terms\b|^Additional Resources\b/i.test(line))break;
+     const name=line.replace(/^•\s*/,'').trim();
+     if(
+       name &&
+       /^[A-Z][A-Za-z0-9&.'’()\- ]{1,55}$/.test(name) &&
+       !/Developing|Definition|Codes|Included|Industry|Software Publishers/i.test(name)
+     ) listed.push(name);
+   }
+ }
+ const companyNames=[...new Set(listed)];
+
+ // 2) Read the actual Company Market Share table. This handles exact values
+ //    (Autodesk 9.3) AND ranges (Apple 2.5–5; Hudl 0–2.5).
+ const found=[];
  for(const p of primary.pages){
    const f=flat(p.text);
-   if(!/Major Players|Market Share|Companies/i.test(f))continue;
-   for(const m of f.matchAll(/([A-Z][A-Za-z0-9&.'’\-]+(?:\s+[A-Z][A-Za-z0-9&.'’\-]+){0,4})\s+(?:\$?[\d,.]+\s+)?(\d+(?:\.\d+)?)\s*%/g)){
-     const name=clean(m[1]); if(name.toLowerCase()===company.toLowerCase()||/other companies/i.test(name))continue;
-     if(name.length<3)continue;
-     candidates.set(name,{name,share:m[2]+'%',why:'Named in the primary report’s market-share/major-player evidence.',source:citation(pageEvidence({...p,doc:primary.name,title:primary.title},around(f,m.index,300))),score:50});
-   }
- }
- for(const p of primary.pages){
-   const f=flat(p.text); if(!/Companies/i.test(f))continue;
-   const idx=f.indexOf('Companies'); if(idx<0)continue;
-   const segment=f.slice(idx,Math.min(f.length,idx+1200));
-   const names=[...segment.matchAll(/(?:•\s*)?([A-Z][A-Za-z0-9&.'’\-]+(?:\s+[A-Z][A-Za-z0-9&.'’\-]+){0,3})(?=\s+(?:•|Information|Related|$))/g)].map(m=>clean(m[1]));
-   for(const name of names){
-     if(!name||name.toLowerCase()===company.toLowerCase()||/companies|information|industry|related|publishing/i.test(name))continue;
-     if(!candidates.has(name))candidates.set(name,{name,share:'Not reported',why:'Listed as a company in the selected primary industry report.',source:citation(pageEvidence({...p,doc:primary.name,title:primary.title},segment.slice(0,650))),score:10});
-   }
- }
- const compPages=bestPages(['competition','challenger','competitor','open-source','market share'],[primary],8,['Competitive Forces','Outlook']);
- for(const e of compPages){
-   const text=e.snippet;
-   const proper=[...text.matchAll(/\b([A-Z][A-Za-z0-9.'’\-]+(?:\s+[A-Z][A-Za-z0-9.'’\-]+){0,2})\b/g)].map(m=>m[1]);
-   for(const name of proper){
+   if(!/Company Market Share|Industry Market Share by Company|Market Share/i.test(f))continue;
+
+   for(const name of companyNames){
      if(name.toLowerCase()===company.toLowerCase())continue;
-     if(/Source|Industry|Revenue|Market|United States|IBISWorld|Information|Software|Publishing|Companies|Company|Over|The|This|These|Adobe's|CAGR/i.test(name))continue;
-     const count=primary.pages.reduce((n,p)=>n+(flat(p.text).match(new RegExp(`\\b${rxesc(name)}\\b`,'g'))||[]).length,0);
-     if(count>=2){
-       const cur=candidates.get(name);
-       if(cur){cur.score+=Math.min(count,10)}
-       else candidates.set(name,{name,share:'Not reported',why:'Discussed repeatedly in competition/outlook evidence from the primary report.',source:citation(e),score:Math.min(count,10)});
-     }
+     if(/^Other Companies$/i.test(name))continue;
+
+     const re=new RegExp(`\\b${rxesc(name)}\\s+(\\d+(?:\\.\\d+)?(?:\\s*[–—-]\\s*\\d+(?:\\.\\d+)?)?)\\b`,'i');
+     const m=f.match(re);
+     if(!m)continue;
+
+     const raw=m[1].replace(/\s+/g,'');
+     const nums=(raw.match(/\d+(?:\.\d+)?/g)||[]).map(Number);
+     const upper=nums.length?Math.max(...nums):0;
+     const share=raw+'%';
+     const ev=pageEvidence({...p,doc:primary.name,title:primary.title},around(f,m.index,520));
+
+     found.push({
+       name,
+       share,
+       why:'Listed in the primary IBISWorld report’s Company Market Share table; ranked here by the upper bound of the reported share estimate.',
+       source:citation(ev),
+       upper
+     });
    }
  }
- return [...candidates.values()].sort((a,b)=>b.score-a.score).slice(0,5);
+
+ // De-duplicate and rank. For the requested 3–5 competitors, prefer the three
+ // largest source-backed non-target shares instead of filling the table with weak names.
+ const dedup=[...new Map(found.map(x=>[x.name.toLowerCase(),x])).values()]
+   .sort((a,b)=>b.upper-a.upper || a.name.localeCompare(b.name));
+
+ if(dedup.length>=3)return dedup.slice(0,3);
+
+ // 3) If a report exposes fewer than three share rows, supplement only with
+ //    explicitly listed companies and clearly mark the share as unreported.
+ const extras=companyNames
+   .filter(n=>n.toLowerCase()!==company.toLowerCase() && !dedup.some(x=>x.name.toLowerCase()===n.toLowerCase()))
+   .slice(0,3-dedup.length)
+   .map(name=>({
+      name,
+      share:'Not reported',
+      why:'Explicitly listed as a company in the selected primary industry report; individual market share was not reported in the parsed source.',
+      source:(()=>{
+        for(const p of primary.pages.slice(0,4)){
+          const f=flat(p.text), idx=f.search(new RegExp(`\\b${rxesc(name)}\\b`,'i'));
+          if(idx>=0)return citation(pageEvidence({...p,doc:primary.name,title:primary.title},around(f,idx,350)));
+        }
+        return primary.title;
+      })(),
+      upper:-1
+   }));
+
+ return [...dedup,...extras].slice(0,3);
 }
 
 function runPipeline(){
