@@ -106,6 +106,65 @@ function pageObjects(d){return d.pages.map(p=>({...p,doc:d.name,title:d.title}))
 function allPages(ds=docs){return ds.flatMap(pageObjects)}
 function pageEvidence(p,snippet){return {doc:p.doc,title:p.title,page:p.page,printed:p.printed,section:p.section,snippet:flat(snippet||p.text)}}
 function around(text,index,len=700){const f=flat(text);return f.slice(Math.max(0,index-240),Math.min(f.length,index+len))}
+function extractMarketShareRows(d){
+  const rows=[];
+  for(const p of d.pages){
+    const lines=String(p.text||'').split(/\n+/).map(x=>clean(x)).filter(Boolean);
+    let active=false;
+    for(const line of lines){
+      if(/Company Market Share \(%\)/i.test(line)){active=true;continue}
+      if(!active)continue;
+      if(/^Information\b/i.test(line))break;
+      const m=line.match(/^(.+?)\s+(\d+(?:\.\d+)?(?:\s*[–—-]\s*\d+(?:\.\d+)?)?)\s+(10,000\+|5,001-10,000|1,000-5,000|[0-9,]+)\b/);
+      if(!m)continue;
+      const name=clean(m[1]);
+      if(/Company|Market Share|Employees|Locations|Type|Headquarters/i.test(name))continue;
+      const nums=(m[2].match(/\d+(?:\.\d+)?/g)||[]).map(Number);
+      rows.push({
+        name,
+        share:m[2].replace(/\s+/g,'')+'%',
+        lower:nums[0]||0,
+        upper:nums.length>1?nums[1]:(nums[0]||0),
+        evidence:pageEvidence({...p,doc:d.name,title:d.title,section:'Companies / Market Share'},line)
+      });
+    }
+  }
+  return [...new Map(rows.map(x=>[x.name.toLowerCase(),x])).values()];
+}
+function reportCompanyList(d){
+  const out=[];
+  for(const p of d.pages.slice(0,4)){
+    const lines=String(p.text||'').split(/\n+/).map(x=>clean(x)).filter(Boolean);
+    let active=false;
+    for(const line of lines){
+      if(/^Companies$/i.test(line)){active=true;continue}
+      if(!active)continue;
+      if(/^Information\b|^Related Industries\b|^Related Terms\b|^Additional Resources\b/i.test(line))break;
+      const name=line.replace(/^•\s*/,'').trim();
+      if(name && name.length<60 && !/Industry|Software Publishers|Developing|Selling/i.test(name))out.push(name);
+    }
+  }
+  return [...new Set(out)];
+}
+function findPageEvidence(d,re,section){
+  for(const p of d.pages){
+    const f=flat(p.text),m=f.match(re);
+    if(m)return pageEvidence({...p,doc:d.name,title:d.title,section:section||p.section},around(f,m.index,900));
+  }
+  return null;
+}
+function bestSentenceFrom(text,terms){
+  const sentences=flat(text).split(/(?<=[.!?])\s+(?=[A-Z0-9])/);
+  let best='',score=-1;
+  for(const s of sentences){
+    const l=s.toLowerCase();let q=0;
+    for(const t of terms)if(l.includes(t.toLowerCase()))q+=3;
+    if(/\d/.test(s))q++;
+    if(q>score){score=q;best=s}
+  }
+  return best;
+}
+
 function companyMetrics(d,company){
  const low=company.toLowerCase(), re=new RegExp(`\\b${rxesc(company)}\\b`,'ig');
  let mentions=0, listed=false, major=false, share=null, shareEv=null;
