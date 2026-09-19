@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Industry Intelligence Pipeline</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+<header class="app">
+  <div>
+    <div><span class="badge">IBISWORLD-AWARE</span><span class="badge">LOCAL PDF PARSING</span><span class="badge">PAGE-LEVEL TRACEABILITY</span></div>
+    <h1>Industry Intelligence Pipeline</h1>
+    <div class="sub">Enter a company, upload multiple industry reports, and run a reproducible pipeline that selects the best primary report, extracts the required industry signals, preserves page citations, flags unsupported claims, and prepares a rubric-ready brief.</div>
+  </div>
+</header>
+
+<section class="panel app">
+  <div class="grid">
+    <div class="c8"><label>Company name</label><input id="company" placeholder="e.g., Adobe"></div>
+    <div class="c4"><label>Analyst</label><input id="analyst" placeholder="Your name"></div>
+    <div class="c12 notice">Reports are parsed locally in your browser. A hosted copy of this app can be public without uploading licensed IBISWorld PDFs to the host.</div>
+    <div class="c12">
+      <div class="drop" id="drop"><strong>Drag & drop industry PDFs here</strong><br><span class="muted">IBISWorld and similar text-based PDFs work best. Multiple reports supported.</span><input id="fileInput" type="file" accept="application/pdf" multiple></div>
+      <div id="files"></div>
+    </div>
+    <div class="c12 row"><button class="primary" id="run">Run pipeline</button><button id="clear">Clear reports</button><span id="runStatus" class="status" style="display:none"></span></div>
+  </div>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>1. Primary industry selection</h2><span class="hint">Visible scoring makes the method defensible.</span></div>
+  <div id="reportSelection" class="muted">Run the pipeline after uploading reports.</div>
+  <div class="grid" style="margin-top:12px">
+    <div class="c12"><label>Industry selection method / justification</label><textarea id="method" placeholder="Generated after running the pipeline; edit if needed."></textarea></div>
+    <div class="c12"><label>Method limitations</label><textarea id="methodLimits">This pipeline can compare only the reports supplied by the analyst. A diversified company may participate in several industries, so report selection is a best-fit classification rather than a claim that all company revenue belongs to one market. Market size, CAGR, market share, concentration and customer segmentation are kept within the selected primary report and are not blended across different industries. Missing evidence is flagged rather than guessed.</textarea></div>
+  </div>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>2. NAICS classification</h2><span class="hint">IBIS code and official NAICS are kept separate.</span></div>
+  <div class="grid">
+    <div class="c3"><label>IBIS industry code</label><input id="ibisCode"></div>
+    <div class="c3"><label>Official NAICS</label><input id="naicsCode"></div>
+    <div class="c3"><label>NAICS title</label><input id="naicsTitle"></div>
+    <div class="c3"><label>NAICS source</label><input id="naicsSource"></div>
+    <div class="c3"><label>Neighboring / alternative code</label><input id="neighborCode" placeholder="If available"></div>
+    <div class="c4"><label>Alternative title / industry</label><input id="neighborTitle"></div>
+    <div class="c5"><label>Official Census lookup</label><a class="btn small" target="_blank" rel="noreferrer" href="https://www.census.gov/naics/" id="censusLink">Open Census NAICS</a></div>
+    <div class="c12"><label>Why this classification rather than the alternative?</label><textarea id="naicsWhy" placeholder="Write one sentence. The tool will draft a best-fit explanation when possible."></textarea></div>
+  </div>
+  <div id="naicsEvidence"></div>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>3. Required industry signals</h2><span class="hint">Every final signal has a source field and supporting excerpt.</span></div>
+  <div id="signals"></div>
+  <div class="signal">
+    <div class="signal-head"><h3>Top 3–5 competitors & market share estimates</h3><span id="compConf" class="conf low">not run</span></div>
+    <div style="overflow:auto;margin-top:9px"><table><thead><tr><th>Competitor</th><th class="share">Market share</th><th>Competitive relevance / evidence</th><th class="source">Source</th></tr></thead><tbody id="competitors"></tbody></table></div>
+    <div id="compEvidence"></div>
+  </div>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>4. Missing intelligence & limits</h2><span class="hint">Unsupported claims become explicit gaps.</span></div>
+  <textarea id="missing" placeholder="Automatically generated from unresolved fields; edit as needed."></textarea>
+  <div class="row" style="margin-top:8px"><button class="small" id="refreshMissing">Refresh missing-data assessment</button></div>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>5. Your reflection</h2><span id="wordCount" class="word fail">0 / 250–500 words</span></div>
+  <div class="hint" style="margin-bottom:7px">Write this yourself. Answer: what was hardest to build; one specific decision you would not trust the tool to make; and what building the pipeline showed you that simply reading the framework could not.</div>
+  <textarea id="reflection" style="min-height:220px" placeholder="Paste or write your 250–500 word reflection here before export."></textarea>
+</section>
+
+<section class="panel app">
+  <div class="section-head"><h2>6. Rubric / traceability audit</h2><span class="hint">The export should not be treated as ready until the important checks pass.</span></div>
+  <div id="audit" class="audit"></div>
+  <div class="row" style="margin-top:14px"><button class="secondary" id="preview">Preview submission</button><button class="primary" id="print">Print / Save PDF</button><button id="md">Download Markdown</button><button id="json">Download JSON</button></div>
+</section>
+
+<div id="output" class="output"></div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
