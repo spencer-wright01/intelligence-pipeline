@@ -179,21 +179,32 @@ function companyMetrics(d,company){
   return {mentions:mentions,listed:listed,major:!!share,share:share?share.upper:null,shareObj:share,detail:detail,score:score};
 }
 function selectPrimary(company){
- const ranked=docs.filter(d=>d.status==='ready').map(d=>({d,...companyMetrics(d,company)})).sort((a,b)=>b.score-a.score);
- primary=ranked[0]?.d||null;
- if(primary) primary.metrics=ranked[0];
- $('reportSelection').innerHTML=ranked.length?ranked.map((r,i)=>`<div class="report-card ${i===0?'primary':''}">
-  <div class="row"><span class="pill ${i===0?'primary':''}">${i===0?'PRIMARY':'ALTERNATIVE'}</span><strong>${esc(r.d.title)}</strong><span class="muted">${esc(r.d.ibisCode||'')}</span><span class="score">${r.score.toFixed(0)}</span></div>
-  <div class="reason">${r.share!=null?`Company market share found: ${r.share}% · `:''}${r.listed?'Listed in report company set · ':''}${r.major?'Appears in Major Players/Market Share section · ':''}${r.mentions} company-name mentions detected.</div>
- </div>`).join(''):'No parsed reports.';
- if(ranked.length){
+  const ranked=docs.filter(d=>d.status==='ready').map(d=>({d:d,...companyMetrics(d,company)})).sort((a,b)=>b.score-a.score);
   const top=ranked[0], alt=ranked[1];
-  $('method').value=`The pipeline reviewed ${ranked.length} uploaded industry report${ranked.length===1?'':'s'} and selected “${top.d.title}” as the primary industry for ${company}. The selection score prioritizes explicit company market share, appearance in the report’s company/major-player sections, and repeated company-specific evidence. ${top.share!=null?`${company} has a reported ${top.share}% share in this report, which is strong direct evidence of competitive relevance. `:''}${alt?`The next-closest uploaded alternative was “${alt.d.title}” (score ${alt.score.toFixed(0)} versus ${top.score.toFixed(0)}), so it is treated as supplemental rather than blended into primary-market statistics.`:'No alternative report was available for comparison.'}`;
-  if(alt && top.score-alt.score<8)$('method').value+=` Because the top two scores are close, the industry choice should be treated as a close call and reviewed manually.`;
- }
- return ranked;
-}
+  const ambiguousPeripheral=!!(top&&alt&&top.shareObj&&alt.shareObj&&top.shareObj.upper<=5&&alt.shareObj.upper<=5&&Math.abs(top.shareObj.upper-alt.shareObj.upper)<0.25&&!top.detail&&!alt.detail);
 
+  if(!top || top.score<35 || ambiguousPeripheral){
+    primary=null;
+    $('reportSelection').innerHTML=ranked.map(function(r,i){
+      const why=(r.shareObj?'Reported company share: '+r.shareObj.share+' · ':'')+(r.detail?'Dedicated company metrics found · ':'')+(r.listed?'Listed in report · ':'')+r.mentions+' company mentions.';
+      return '<div class="report-card"><div class="row"><span class="pill">'+(i===0?'INSUFFICIENT FIT':'ALTERNATIVE')+'</span><strong>'+esc(r.d.title)+'</strong><span class="muted">'+esc(r.d.ibisCode||'')+'</span><span class="score">'+r.score.toFixed(0)+'</span></div><div class="reason">'+why+'</div></div>';
+    }).join('');
+    $('method').value=ambiguousPeripheral
+      ? 'No uploaded industry report clearly represents '+company+'\\'s primary industry. The company appears only as a peripheral participant in multiple reports at similar market-share levels, so selecting one would overstate the evidence.'
+      : 'No uploaded industry report adequately represents '+company+'\\'s primary industry. A report whose definition matches the company\\'s main products/services and contains meaningful company-specific evidence is required.';
+    return {ranked:ranked,accepted:false};
+  }
+
+  primary=top.d;
+  primary.metrics=top;
+  $('reportSelection').innerHTML=ranked.map(function(r,i){
+    const why=(r.shareObj?'Reported company share: '+r.shareObj.share+' · ':'')+(r.detail?'Dedicated company metrics found · ':'')+(r.listed?'Listed in report · ':'')+r.mentions+' company mentions.';
+    return '<div class="report-card '+(i===0?'primary':'')+'"><div class="row"><span class="pill '+(i===0?'primary':'')+'">'+(i===0?'PRIMARY':'ALTERNATIVE')+'</span><strong>'+esc(r.d.title)+'</strong><span class="muted">'+esc(r.d.ibisCode||'')+'</span><span class="score">'+r.score.toFixed(0)+'</span></div><div class="reason">'+why+'</div></div>';
+  }).join('');
+
+  $('method').value='The pipeline compared '+ranked.length+' uploaded industry reports using source-grounded company relevance: reported market share, dedicated company metrics, explicit inclusion in the report\\'s company set, and repeated company-specific evidence. "'+top.d.title+'" was selected as the primary industry for '+company+(top.shareObj?' because the report assigns '+company+' '+top.shareObj.share+' market share':'')+(top.detail?' and includes dedicated company metrics':'')+'. '+(alt?'The next-best report scored '+alt.score.toFixed(0)+' versus '+top.score.toFixed(0)+' and is treated only as supplemental; industry statistics are not blended across reports.':'');
+  return {ranked:ranked,accepted:true};
+}
 function bestPages(keys,ds,limit=5,bonusSections=[]){
  const arr=[];
  for(const p of allPages(ds)){
