@@ -33,10 +33,57 @@ table{width:100%;border-collapse:collapse;font-size:13px} th,td{border-bottom:1p
 .audit{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.audit>div{border:1px solid var(--line);background:#f8fafc;border-radius:10px;padding:9px;font-size:12px}.audit strong{display:block;font-size:14px}
 .pass{color:var(--green)}.fail{color:var(--red)}
 .word{font-size:12px;font-weight:800}
-.output{display:none}.output h1{font-size:26px}.output h2{font-size:18px;margin-top:26px;padding-bottom:5px;border-bottom:1px solid #d0d5dd}.output h3{font-size:14px;margin:14px 0 5px}.output p{margin:6px 0}.citation{font-size:12px;color:#475467}.methodbox,.missingbox{border:1px solid var(--line);border-radius:10px;padding:10px;background:#f8fafc}.missingbox{background:var(--amber2);border-color:#fedf89}
-@media(max-width:850px){.c8,.c6,.c4,.c3{grid-column:span 12}.audit{grid-template-columns:1fr 1fr}header{display:block}}
+.output{display:none;color:#17233f}
+.output *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pdf-cover{background:linear-gradient(135deg,#102a56 0%,#173d79 100%);color:#fff;border-radius:18px;padding:26px 28px 22px;margin-bottom:16px;position:relative;overflow:hidden}
+.pdf-cover:after{content:"";position:absolute;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.06);right:-55px;top:-75px}
+.pdf-kicker{font-size:11px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:#dce7ff;margin-bottom:10px}
+.pdf-title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;position:relative;z-index:1}
+.pdf-cover h1{font-size:32px;line-height:1.05;margin:0;color:#fff}
+.pdf-subtitle{font-size:15px;color:#d7e3fb;margin-top:5px}
+.pdf-code{background:#fff;color:#102a56;border-radius:12px;padding:10px 14px;text-align:right;min-width:150px}
+.pdf-code .label{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#6c7890;font-weight:800}
+.pdf-code .value{font-size:18px;font-weight:900;margin-top:1px}
+.pdf-meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:17px;padding-top:13px;border-top:1px solid rgba(255,255,255,.18);font-size:10px;color:#e8efff}
+.pdf-meta strong{color:#fff}
+.tool-banner{display:flex;align-items:center;gap:10px;border:1px solid #cad8f3;background:#eef4ff;border-radius:11px;padding:9px 12px;margin:0 0 16px;font-size:10px}
+.tool-banner .tool-tag{background:#d83933;color:#fff;font-size:9px;font-weight:900;letter-spacing:.08em;padding:4px 7px;border-radius:999px}
+.tool-banner .tool-url{font-weight:700;color:#173d79;word-break:break-all}
+.pdf-section{margin:17px 0 0}
+.pdf-section-title{display:flex;align-items:center;gap:9px;margin-bottom:9px;font-size:15px;font-weight:900;color:#102a56}
+.pdf-section-title .num{display:inline-flex;width:26px;height:26px;border-radius:8px;background:#d83933;color:#fff;align-items:center;justify-content:center;font-size:11px}
+.pdf-card{border:1px solid #d9e1ed;border-radius:12px;padding:12px 13px;background:#fff;margin:9px 0;page-break-inside:avoid}
+.pdf-card.soft{background:#f7f9fc}
+.pdf-card.warnbox{background:#fff9ed;border-color:#f3d7a0}
+.pdf-card h3{font-size:11px;text-transform:uppercase;letter-spacing:.055em;color:#5c6b82;margin:0 0 5px}
+.pdf-card p{margin:4px 0;font-size:10.2pt}
+.pdf-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pdf-grid .wide{grid-column:1/-1}
+.pdf-signal{border:1px solid #d9e1ed;border-left:4px solid #2457d6;border-radius:11px;padding:11px 12px;background:#fff;page-break-inside:avoid}
+.pdf-signal.trend{border-left-color:#087443;background:#f7fcf9}
+.pdf-signal.threat{border-left-color:#d83933;background:#fff8f7}
+.pdf-signal .signal-label{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.045em;color:#43536d;margin-bottom:5px}
+.pdf-signal .signal-text{font-size:10.1pt;line-height:1.42}
+.citation{font-size:8.7pt!important;color:#667085!important;margin-top:7px!important;padding-top:6px;border-top:1px solid #e7ebf2}
+.source-chip{display:inline-block;background:#edf2fb;color:#35517c;border-radius:999px;padding:2px 6px;font-size:8px;font-weight:800;margin-right:4px}
+.pdf-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:11px 0}
+.pdf-summary .metric{border:1px solid #d9e1ed;border-radius:11px;padding:10px 11px;background:#f8fafc}
+.pdf-summary .metric .m-label{font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:#6b778c;font-weight:850}
+.pdf-summary .metric .m-value{font-size:13px;color:#102a56;font-weight:900;margin-top:2px}
+.output table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid #d9e1ed;border-radius:10px;overflow:hidden;font-size:9pt;page-break-inside:avoid}
+.output th{background:#102a56;color:#fff;border:0;padding:7px 8px;font-size:8.3pt;text-transform:uppercase;letter-spacing:.035em}
+.output td{border:0;border-top:1px solid #e7ebf2;padding:7px 8px;vertical-align:top}
+.output tbody tr:nth-child(even) td{background:#f8fafc}
+.reflection-box{border-top:4px solid #102a56;background:#f8fafc;border-radius:10px;padding:14px 15px;font-size:10.4pt;line-height:1.5}
+.pdf-footer-note{font-size:8px;color:#7a8699;text-align:right;margin-top:10px}
+.methodbox,.missingbox{border:1px solid #d9e1ed;border-radius:10px;padding:10px;background:#f8fafc}.missingbox{background:#fff9ed;border-color:#f3d7a0}
+@media(max-width:850px){.c8,.c6,.c4,.c3{grid-column:span 12}.audit{grid-template-columns:1fr 1fr}header{display:block}.pdf-grid,.pdf-summary{grid-template-columns:1fr}.pdf-title-row{display:block}.pdf-code{margin-top:12px;text-align:left}}
 @media print{
-  body{background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:10.5pt}.wrap{max-width:none;padding:0}.app,header{display:none!important}.output{display:block!important}
-  .output h1{font-size:20pt}.output h2{font-size:14pt;page-break-after:avoid}.output h3{page-break-after:avoid}.output table,.methodbox,.missingbox{page-break-inside:avoid}
-  @page{margin:.65in}
+  body{background:#fff;font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#17233f}.wrap{max-width:none;padding:0}.app,header{display:none!important}.output{display:block!important}
+  .pdf-cover{border-radius:0;margin:-.25in -.25in 14px;padding:24px 26px 20px}
+  .pdf-cover h1{font-size:26pt}.pdf-section{margin-top:14px}.pdf-section-title{font-size:13pt}
+  .pdf-card,.pdf-signal,.reflection-box,.output table{page-break-inside:avoid}
+  .pdf-grid{gap:7px}.pdf-summary{gap:6px}
+  .output p{orphans:3;widows:3}
+  @page{size:Letter;margin:.55in}
 }
