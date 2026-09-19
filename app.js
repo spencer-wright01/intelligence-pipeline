@@ -281,16 +281,20 @@ function extractSizeGrowth(){
   return {value:val.join('; ')+'.',source:citation(e),ev:[e]};
 }
 function parseMajorMarkets(){
- if(!primary)return null;
- const pages=bestPages(['major markets segmentation','industry revenue'],[primary],8,['Major Markets']);
- for(const e of pages){
-   const f=flat(e.snippet);
-   if(!/Major Markets Segmentation/i.test(f))continue;
-   const pairs=[...f.matchAll(/([A-Z][A-Za-z,&'’ /-]{2,70})\s*\(\$?[\d,.]+\s*(?:bn|m|million|billion)?\)\s*(\d+(?:\.\d+)?)%/g)]
-     .map(m=>({segment:clean(m[1]),share:m[2]}));
-   if(pairs.length>=2)return {pairs,e};
- }
- return null;
+  if(!primary)return null;
+  const p=primary.pages.find(function(p){return /Major Markets Segmentation/i.test(flat(p.text));});
+  if(!p)return null;
+  const f=flat(p.text);
+  const idx=f.indexOf('Major Markets Segmentation');
+  const tail=f.slice(idx,Math.min(f.length,idx+1800));
+  const pairs=[];
+  for(const m of tail.matchAll(/([A-Z][A-Za-z0-9,&'’ \/-]{2,80})\s*\(\$?[\d,.]+\s*(?:bn|m|million|billion)?\)\s*(\d+(?:\.\d+)?)%/g)){
+    const segment=clean(m[1]).replace(/^Industry revenue.*?markets\s*/i,'').trim();
+    if(segment&&!/Source: IBISWorld/i.test(segment))pairs.push({segment:segment,share:m[2]});
+  }
+  if(!pairs.length)return null;
+  const e=pageEvidence({...p,doc:primary.name,title:primary.title,section:'Major Markets'},tail);
+  return {pairs:pairs.slice(0,8),e:e};
 }
 function buyerPowerText(){
  const ev=bestPages(['buyer power','customer class concentration','major markets'],[primary],5,['Buyer & Supplier Power','Major Markets']);
