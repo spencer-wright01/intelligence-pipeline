@@ -163,43 +163,39 @@ function extractAtAGlance(d){
   return {
     revenue:rev?('
 function companyMetrics(d,company){
- const low=company.toLowerCase(), re=new RegExp(`\\b${rxesc(company)}\\b`,'ig');
- let mentions=0, listed=false, major=false, share=null, shareEv=null;
- for(const p of d.pages){
-   const f=flat(p.text); const m=f.match(re); mentions+=m?m.length:0;
-   if(/What.?s Included|Companies/i.test(f) && new RegExp(`\\b${rxesc(company)}\\b`,'i').test(f))listed=true;
-   if(/Major Players|Market Share/i.test(f) && new RegExp(`\\b${rxesc(company)}\\b`,'i').test(f))major=true;
-   const idx=f.search(new RegExp(`\\b${rxesc(company)}\\b`,'i'));
-   if(idx>=0 && /Major Players|Market Share/i.test(f)){
-     const sn=around(f,idx,260);
-     const after=sn.slice(Math.max(0,sn.toLowerCase().indexOf(company.toLowerCase())+company.length));
-     const nums=[...after.matchAll(/(\d+(?:\.\d+)?)\s*%/g)].map(x=>Number(x[1]));
-     if(nums.length){share=nums[0];shareEv=pageEvidence({...p,doc:d.name,title:d.title},sn)}
-     else{
-       const compact=after.match(/^\s*(?:\$?\s*)?(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)(?:\s|$)/);
-       if(compact){share=Number(compact[2]);shareEv=pageEvidence({...p,doc:d.name,title:d.title},sn)}
-     }
-   }
- }
- const score=(share!=null?45+Math.min(share,35):0)+(listed?18:0)+(major?12:0)+Math.min(mentions,12);
- return {mentions,listed,major,share,shareEv,score};
+  return companyPresence(d,company);
 }
 function selectPrimary(company){
- const ranked=docs.filter(d=>d.status==='ready').map(d=>({d,...companyMetrics(d,company)})).sort((a,b)=>b.score-a.score);
- primary=ranked[0]?.d||null;
- if(primary) primary.metrics=ranked[0];
- $('reportSelection').innerHTML=ranked.length?ranked.map((r,i)=>`<div class="report-card ${i===0?'primary':''}">
-  <div class="row"><span class="pill ${i===0?'primary':''}">${i===0?'PRIMARY':'ALTERNATIVE'}</span><strong>${esc(r.d.title)}</strong><span class="muted">${esc(r.d.ibisCode||'')}</span><span class="score">${r.score.toFixed(0)}</span></div>
-  <div class="reason">${r.share!=null?`Company market share found: ${r.share}% · `:''}${r.listed?'Listed in report company set · ':''}${r.major?'Appears in Major Players/Market Share section · ':''}${r.mentions} company-name mentions detected.</div>
- </div>`).join(''):'No parsed reports.';
- if(ranked.length){
+  const ranked=docs.filter(d=>d.status==='ready').map(d=>({d,...companyPresence(d,company)})).sort((a,b)=>b.score-a.score);
   const top=ranked[0], alt=ranked[1];
-  $('method').value=`The pipeline reviewed ${ranked.length} uploaded industry report${ranked.length===1?'':'s'} and selected “${top.d.title}” as the primary industry for ${company}. The selection score prioritizes explicit company market share, appearance in the report’s company/major-player sections, and repeated company-specific evidence. ${top.share!=null?`${company} has a reported ${top.share}% share in this report, which is strong direct evidence of competitive relevance. `:''}${alt?`The next-closest uploaded alternative was “${alt.d.title}” (score ${alt.score.toFixed(0)} versus ${top.score.toFixed(0)}), so it is treated as supplemental rather than blended into primary-market statistics.`:'No alternative report was available for comparison.'}`;
-  if(alt && top.score-alt.score<8)$('method').value+=` Because the top two scores are close, the industry choice should be treated as a close call and reviewed manually.`;
- }
- return ranked;
-}
+  const peripheralTie=!!(top&&alt&&top.share&&alt.share&&top.share.upper<=5&&alt.share.upper<=5&&Math.abs(top.share.upper-alt.share.upper)<0.25&&!top.detail&&!alt.detail);
+  const accepted=!!(top && top.score>=35 && !peripheralTie);
+  primary=accepted?top.d:null;
+  if(primary)primary.metrics=top;
 
+  $('reportSelection').innerHTML=ranked.length?ranked.map((r,i)=>{
+    const label=!accepted&&i===0?'INSUFFICIENT FIT':i===0?'PRIMARY':'ALTERNATIVE';
+    const cls=accepted&&i===0?'primary':'';
+    return '<div class="report-card '+cls+'"><div class="row"><span class="pill '+cls+'">'+label+'</span><strong>'+esc(r.d.title)+'</strong><span class="muted">'+esc(r.d.ibisCode||'')+'</span><span class="score">'+r.score.toFixed(0)+'</span></div><div class="reason">'+
+      (r.share?'Reported company share: '+r.share.share+' · ':'')+
+      (r.detail?'Dedicated company detail found · ':'')+
+      (r.listed?'Listed in report company set · ':'')+
+      r.mentions+' company mentions.</div></div>';
+  }).join(''):'No parsed reports.';
+
+  if(!accepted){
+    $('method').value=peripheralTie
+      ? 'No uploaded industry report clearly represents '+company+'’s primary industry. The company appears only as a peripheral, similarly sized participant in multiple uploaded reports, so selecting one would overstate the evidence. A more directly relevant industry report is required.'
+      : 'No uploaded industry report adequately represents '+company+'’s primary industry. Add a report whose definition matches the company’s main products/services and that contains meaningful company-specific competitive evidence.';
+    return {ranked,accepted:false};
+  }
+
+  $('method').value='The pipeline compared '+ranked.length+' uploaded reports using four source-grounded signals: reported company market share, a dedicated company-detail section, explicit inclusion in the report’s company set, and repeated company-specific evidence. “'+top.d.title+'” was selected as the primary industry for '+company+
+    (top.share?' because the report assigns the company '+top.share.share+' market share':'')+
+    (top.detail?' and contains dedicated company analysis':'')+'. '+
+    (alt?'The next-best report scored '+alt.score.toFixed(0)+' versus '+top.score.toFixed(0)+' and is treated as supplemental; its industry statistics are not blended into the primary market.':'');
+  return {ranked,accepted:true};
+}
 function bestPages(keys,ds,limit=5,bonusSections=[]){
  const arr=[];
  for(const p of allPages(ds)){
@@ -249,50 +245,53 @@ function extractNaics(){
 }
 
 function extractSizeGrowth(){
- if(!primary)return {value:'',source:'',ev:[]};
- const ev=bestPages(['revenue','cagr','forecast'],[primary],6,['At a Glance','Performance','Outlook']);
- let data=null;
- for(const e of ev){
-   const f=flat(e.snippet);
-   const rev=f.match(/Revenue\s+\$?\s*(\d+(?:\.\d+)?)\s*(bn|billion|m|million)/i);
-   const rates=[...f.matchAll(/(20\d{2})\s*[-–]\s*(\d{2,4})\s+[^%]{0,15}?(\d+(?:\.\d+)?)\s*%/g)];
-   if(rev && rates.length>=2){data={rev:`$${rev[1]}${rev[2].toLowerCase().startsWith('b')?'bn':'m'}`,r1:rates[0],r2:rates[1],e};break}
- }
- if(data){
-   const endYear=String(data.r2[2]).length===2?String(data.r2[1]).slice(0,2)+data.r2[2]:data.r2[2];
-   const value=`${primary.title} reports current industry revenue of ${data.rev}. Historical five-year revenue CAGR was ${data.r1[3]}% for ${data.r1[1]}–${data.r1[2]}, and forecast five-year CAGR is ${data.r2[3]}% for ${data.r2[1]}–${endYear}.`;
-   return {value,source:citation(data.e),ev};
- }
- return {value:ev.length?evidenceSnippet(ev[0],signalDefs[0].keys):'',source:ev[0]?citation(ev[0]):'',ev};
+  if(!primary)return {value:'',source:'',ev:[]};
+  const a=primary.profile?.atAGlance;
+  if(!a)return {value:'Not found in provided sources.',source:'Not found in provided sources.',ev:[]};
+  const hist=a.historic?(a.historic.start+'–'+formatYearEnd(a.historic.start,a.historic.end)+' CAGR of '+a.historic.rate+'%'):'historic five-year CAGR not found';
+  const fc=a.forecast?(a.forecast.start+'–'+formatYearEnd(a.forecast.start,a.forecast.end)+' forecast CAGR of '+a.forecast.rate+'%'):'forecast five-year CAGR not found';
+  const extras=[a.profit&&('profit '+a.profit),a.margin&&('margin '+a.margin)].filter(Boolean).join(', ');
+  return {
+    value:'Industry revenue is '+(a.revenue||'not reported')+' with a '+hist+' and a '+fc+(extras?'; '+extras+'.':'.'),
+    source:citation(a.evidence),
+    ev:[a.evidence]
+  };
 }
 function parseMajorMarkets(){
- if(!primary)return null;
- const pages=bestPages(['major markets segmentation','industry revenue'],[primary],8,['Major Markets']);
- for(const e of pages){
-   const f=flat(e.snippet);
-   if(!/Major Markets Segmentation/i.test(f))continue;
-   const pairs=[...f.matchAll(/([A-Z][A-Za-z,&'’ /-]{2,70})\s*\(\$?[\d,.]+\s*(?:bn|m|million|billion)?\)\s*(\d+(?:\.\d+)?)%/g)]
-     .map(m=>({segment:clean(m[1]),share:m[2]}));
-   if(pairs.length>=2)return {pairs,e};
- }
- return null;
+  if(!primary)return null;
+  const m=primary.profile?.majorMarkets;
+  return m&&m.markets.length?{pairs:m.markets.map(x=>({segment:x.name,share:String(x.share)})),e:m.evidence}:null;
 }
 function buyerPowerText(){
- const ev=bestPages(['buyer power','customer class concentration','major markets'],[primary],5,['Buyer & Supplier Power','Major Markets']);
- return ev;
+  const p=primary?.profile?.power;
+  return p?.evidence?[p.evidence]:[];
 }
 function supplierPowerText(){
- const ev=bestPages(['supplier power','supplier','cloud','infrastructure','talent'],docs,6,['Buyer & Supplier Power']);
- return ev;
+  const p=primary?.profile?.power;
+  return p?.evidence?[p.evidence]:[];
 }
 function regulationText(){
- let ev=bestPages(signalDefs.find(s=>s.id==='regulation').keys,[primary],5,['Regulation & Policy']);
- if(ev.length<2)ev=[...ev,...bestPages(signalDefs.find(s=>s.id==='regulation').keys,docs.filter(d=>d!==primary),3,['Regulation & Policy'])];
- return ev.slice(0,5);
+  const r=primary?.profile?.regulation;
+  return r?.evidence?[r.evidence]:[];
 }
-function trendText(){return bestPages(['over the next five years','will increasingly','outlook','artificial intelligence','ai','generative','innovation'],[primary],6,['Outlook','Innovations'])}
-function threatText(){return bestPages(['threat','over the next five years','open-source','substitutes','competition','risk','cybersecurity'],[primary],6,['Outlook','Competitive Forces'])}
-
+function trendText(){
+  if(!primary)return [];
+  const out=[];
+  const o=primary.profile?.outlook;
+  if(o?.pages?.length)for(const p of o.pages)out.push(ev(primary,p,'Outlook',p.text));
+  const i=findEvidence(primary,/AI and generative tools are reshaping workflows|Publishers have experimented with AI incorporation|artificial intelligence/i,'Innovations / Outlook');
+  if(i)out.unshift(i);
+  return out;
+}
+function threatText(){
+  if(!primary)return [];
+  const out=[];
+  const o=primary.profile?.outlook;
+  if(o?.pages?.length)for(const p of o.pages)out.push(ev(primary,p,'Outlook',p.text));
+  const t=findEvidence(primary,/free and open-source alternatives|market saturation|cyber attacks|substitutes/i,'Outlook / Competitive Forces');
+  if(t)out.unshift(t);
+  return out;
+}
 function autoSignal(id,value,source,ev,keys){
  $('val-'+id).value=value||'Not found in provided sources.';
  $('src-'+id).value=source||'Not found in provided sources.';
@@ -300,87 +299,18 @@ function autoSignal(id,value,source,ev,keys){
  renderEvidence('ev-'+id,ev||[],keys,e=>{$('val-'+id).value=evidenceSnippet(e,keys);$('src-'+id).value=citation(e);updateAudit()});
 }
 function competitorCandidates(company){
- if(!primary)return [];
-
- // 1) Pull the report's own named-company list from the About This Industry section.
- const listed=[];
- for(const p of primary.pages.slice(0,4)){
-   const lines=String(p.text||'').split(/\n+/).map(x=>clean(x)).filter(Boolean);
-   let inCompanies=false;
-   for(const line of lines){
-     if(/^Companies$/i.test(line)){inCompanies=true;continue}
-     if(!inCompanies)continue;
-     if(/^Information\b|^Related Industries\b|^Related Terms\b|^Additional Resources\b/i.test(line))break;
-     const name=line.replace(/^•\s*/,'').trim();
-     if(
-       name &&
-       /^[A-Z][A-Za-z0-9&.'’()\- ]{1,55}$/.test(name) &&
-       !/Developing|Definition|Codes|Included|Industry|Software Publishers/i.test(name)
-     ) listed.push(name);
-   }
- }
- const companyNames=[...new Set(listed)];
-
- // 2) Read the actual Company Market Share table. This handles exact values
- //    (Autodesk 9.3) AND ranges (Apple 2.5–5; Hudl 0–2.5).
- const found=[];
- for(const p of primary.pages){
-   const f=flat(p.text);
-   if(!/Company Market Share|Industry Market Share by Company|Market Share/i.test(f))continue;
-
-   for(const name of companyNames){
-     if(name.toLowerCase()===company.toLowerCase())continue;
-     if(/^Other Companies$/i.test(name))continue;
-
-     const re=new RegExp(`\\b${rxesc(name)}\\s+(\\d+(?:\\.\\d+)?(?:\\s*[–—-]\\s*\\d+(?:\\.\\d+)?)?)\\b`,'i');
-     const m=f.match(re);
-     if(!m)continue;
-
-     const raw=m[1].replace(/\s+/g,'');
-     const nums=(raw.match(/\d+(?:\.\d+)?/g)||[]).map(Number);
-     const upper=nums.length?Math.max(...nums):0;
-     const share=raw+'%';
-     const ev=pageEvidence({...p,doc:primary.name,title:primary.title},around(f,m.index,520));
-
-     found.push({
-       name,
-       share,
-       why:'Listed in the primary IBISWorld report’s Company Market Share table; ranked here by the upper bound of the reported share estimate.',
-       source:citation(ev),
-       upper
-     });
-   }
- }
-
- // De-duplicate and rank. For the requested 3–5 competitors, prefer the three
- // largest source-backed non-target shares instead of filling the table with weak names.
- const dedup=[...new Map(found.map(x=>[x.name.toLowerCase(),x])).values()]
-   .sort((a,b)=>b.upper-a.upper || a.name.localeCompare(b.name));
-
- if(dedup.length>=3)return dedup.slice(0,3);
-
- // 3) If a report exposes fewer than three share rows, supplement only with
- //    explicitly listed companies and clearly mark the share as unreported.
- const extras=companyNames
-   .filter(n=>n.toLowerCase()!==company.toLowerCase() && !dedup.some(x=>x.name.toLowerCase()===n.toLowerCase()))
-   .slice(0,3-dedup.length)
-   .map(name=>({
-      name,
-      share:'Not reported',
-      why:'Explicitly listed as a company in the selected primary industry report; individual market share was not reported in the parsed source.',
-      source:(()=>{
-        for(const p of primary.pages.slice(0,4)){
-          const f=flat(p.text), idx=f.search(new RegExp(`\\b${rxesc(name)}\\b`,'i'));
-          if(idx>=0)return citation(pageEvidence({...p,doc:primary.name,title:primary.title},around(f,idx,350)));
-        }
-        return primary.title;
-      })(),
-      upper:-1
-   }));
-
- return [...dedup,...extras].slice(0,3);
+  if(!primary)return [];
+  const rows=(primary.profile?.shares||[])
+    .filter(x=>x.name.toLowerCase()!==company.toLowerCase()&&!/^Other Companies$/i.test(x.name))
+    .sort((a,b)=>b.upper-a.upper||b.lower-a.lower||a.name.localeCompare(b.name));
+  return rows.slice(0,3).map(x=>({
+    name:x.name,
+    share:x.share,
+    why:'Top source-backed competitor by reported industry market-share estimate in the selected primary report.',
+    source:citation(x.evidence),
+    upper:x.upper
+  }));
 }
-
 function runPipeline(){
  const company=$('company').value.trim();
  $('runStatus').style.display='inline-block';
