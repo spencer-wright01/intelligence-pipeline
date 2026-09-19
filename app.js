@@ -378,40 +378,74 @@ updateAudit();
 
 function buildOutput(){
  const d=currentData(), sig=d.signals;
- const compRows=d.competitors.length?d.competitors.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.share||'Not reported')}</td><td>${esc(c.why)}</td><td>${esc(c.source)}</td></tr>`).join(''):'<tr><td colspan="4">Not found in provided sources.</td></tr>';
+ const compRows=d.competitors.length?d.competitors.map(c=>`<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.share||'Not reported')}</td><td>${esc(c.why)}</td><td>${esc(c.source)}</td></tr>`).join(''):'<tr><td colspan="4">Not found in provided sources.</td></tr>';
+ const signalClass=id=>id==='trend'?'trend':id==='threat'?'threat':'';
+ const signalCards=signalDefs.map(s=>`<div class="pdf-signal ${signalClass(s.id)}"><div class="signal-label">${esc(sig[s.id].label)}</div><div class="signal-text">${esc(sig[s.id].value||'Not found in provided sources.')}</div><div class="citation"><span class="source-chip">SOURCE</span>${esc(sig[s.id].source||'Not found in provided sources.')}</div></div>`).join('');
+ const exactShares=d.competitors.filter(c=>c.share&&!/not reported/i.test(c.share)).length;
  $('output').innerHTML=`
- <h1>Industry Intelligence Pipeline Submission — ${esc(d.company||'Company')}</h1>
- <p><strong>Working tool:</strong> ${esc(d.tool_link)}</p>
- <p class="citation">This brief represents the actual output produced by the Industry Intelligence Pipeline using the uploaded industry reports.</p>
+ <div class="pdf-cover">
+   <div class="pdf-kicker">STRAT 560 · Industry Intelligence Pipeline</div>
+   <div class="pdf-title-row">
+     <div><h1>${esc(d.company||'Company')}</h1><div class="pdf-subtitle">Industry Intelligence Brief & Signal Traceability</div></div>
+     <div class="pdf-code"><div class="label">Selected NAICS</div><div class="value">${esc(d.naics.code||'—')}</div><div class="label">${esc(d.naics.title||'')}</div></div>
+   </div>
+   <div class="pdf-meta">
+     <span><strong>Primary industry:</strong> ${esc(d.primary_report||'Not selected')}</span>
+     <span><strong>Analyst:</strong> ${esc(d.analyst||'—')}</span>
+     <span><strong>Generated:</strong> ${esc(d.generated)}</span>
+   </div>
+ </div>
 
- <h2>2. Industry Intelligence Brief</h2>
- <h3>Industry Selection Method</h3><div class="methodbox">${esc(d.method||'Not yet generated.')}</div>
- <h3>Method Limitations</h3><div class="methodbox">${esc(d.method_limits)}</div>
+ <div class="tool-banner"><span class="tool-tag">PUBLIC TOOL</span><span class="tool-url">${esc(d.tool_link)}</span></div>
 
- <h3>Industry Definition and NAICS</h3>
- <p><strong>Selected primary industry:</strong> ${esc(d.primary_report||'Not selected')}</p>
- <p><strong>IBISWorld industry code:</strong> ${esc(d.naics.ibis||'Not found')}</p>
- <p><strong>Official NAICS:</strong> ${esc(d.naics.code||'Not found')} — ${esc(d.naics.title||'')}</p>
- <p><strong>Why this classification rather than the alternative:</strong> ${esc(d.naics.why||'Not completed')}</p>
- <p class="citation"><strong>Source:</strong> ${esc(d.naics.source||'Not found in provided sources.')}${d.naics.neighbor?` | <strong>Alternative:</strong> ${esc(d.naics.neighbor)} — ${esc(d.naics.neighbor_title)}`:''}</p>
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">01</span>Industry Selection & Classification</div>
+   <div class="pdf-grid">
+     <div class="pdf-card"><h3>Industry Selection Method</h3><p>${esc(d.method||'Not yet generated.')}</p></div>
+     <div class="pdf-card soft"><h3>Method Limitation</h3><p>${esc(d.method_limits)}</p></div>
+     <div class="pdf-card wide"><h3>NAICS Classification</h3>
+       <p><strong>IBISWorld code:</strong> ${esc(d.naics.ibis||'Not found')} &nbsp; | &nbsp; <strong>Official NAICS:</strong> ${esc(d.naics.code||'Not found')} — ${esc(d.naics.title||'')}</p>
+       <p><strong>Why this code:</strong> ${esc(d.naics.why||'Not completed')}</p>
+       <p class="citation"><span class="source-chip">SOURCE</span>${esc(d.naics.source||'Not found in provided sources.')}${d.naics.neighbor?` &nbsp; | &nbsp; <strong>Alternative:</strong> ${esc(d.naics.neighbor)} — ${esc(d.naics.neighbor_title)}`:''}</p>
+     </div>
+   </div>
+ </div>
 
- ${signalDefs.map(s=>`<h3>${esc(sig[s.id].label)}</h3><p>${esc(sig[s.id].value||'Not found in provided sources.')}</p><p class="citation"><strong>Source:</strong> ${esc(sig[s.id].source||'Not found in provided sources.')}</p>`).join('')}
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">02</span>Industry Intelligence Signals</div>
+   <div class="pdf-summary">
+     <div class="metric"><div class="m-label">Primary Report</div><div class="m-value">${esc(d.primary_code||d.naics.ibis||'—')}</div></div>
+     <div class="metric"><div class="m-label">Signals Sourced</div><div class="m-value">${Object.values(sig).filter(x=>x.source&&!/not found/i.test(x.source)).length} / ${signalDefs.length}</div></div>
+     <div class="metric"><div class="m-label">Competitor Shares</div><div class="m-value">${exactShares} reported</div></div>
+   </div>
+   <div class="pdf-grid">${signalCards}</div>
+ </div>
 
- <h3>Top 3–5 competitors & market share estimates</h3>
- <table><thead><tr><th>Competitor</th><th>Market share</th><th>Competitive relevance</th><th>Source</th></tr></thead><tbody>${compRows}</tbody></table>
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">03</span>Competitive Landscape</div>
+   <table><thead><tr><th>Competitor</th><th>Market Share</th><th>Competitive Relevance</th><th>Source</th></tr></thead><tbody>${compRows}</tbody></table>
+ </div>
 
- <h3>Missing Intelligence and Limits</h3><div class="missingbox">${esc(d.missing||'Not completed')}</div>
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">04</span>Missing Intelligence & Limits</div>
+   <div class="pdf-card warnbox"><p>${esc(d.missing||'Not completed')}</p></div>
+ </div>
 
- <h3>Source Traceability Matrix</h3>
- <table><thead><tr><th>Required signal</th><th>Main finding</th><th>Source</th></tr></thead><tbody>
- <tr><td>Industry selection</td><td>${esc(d.primary_report)}</td><td>${esc(d.method)}</td></tr>
- <tr><td>NAICS</td><td>${esc(`${d.naics.code} — ${d.naics.title}`)}</td><td>${esc(d.naics.source)}</td></tr>
- ${signalDefs.map(s=>`<tr><td>${esc(sig[s.id].label)}</td><td>${esc(sig[s.id].value)}</td><td>${esc(sig[s.id].source)}</td></tr>`).join('')}
- <tr><td>Competitors / market shares</td><td>${esc(d.competitors.map(c=>`${c.name}: ${c.share||'Not reported'}`).join('; '))}</td><td>${esc(d.competitors.map(c=>c.source).filter(Boolean).join('; '))}</td></tr>
- </tbody></table>
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">05</span>Source Traceability Matrix</div>
+   <table><thead><tr><th>Required Signal</th><th>Main Finding</th><th>Source</th></tr></thead><tbody>
+   <tr><td><strong>Industry selection</strong></td><td>${esc(d.primary_report)}</td><td>${esc(d.method)}</td></tr>
+   <tr><td><strong>NAICS</strong></td><td>${esc(`${d.naics.code} — ${d.naics.title}`)}</td><td>${esc(d.naics.source)}</td></tr>
+   ${signalDefs.map(s=>`<tr><td><strong>${esc(sig[s.id].label)}</strong></td><td>${esc(sig[s.id].value)}</td><td>${esc(sig[s.id].source)}</td></tr>`).join('')}
+   <tr><td><strong>Competitors / market shares</strong></td><td>${esc(d.competitors.map(c=>`${c.name}: ${c.share||'Not reported'}`).join('; '))}</td><td>${esc(d.competitors.map(c=>c.source).filter(Boolean).join('; '))}</td></tr>
+   </tbody></table>
+ </div>
 
- <h2>3. Reflection — 250–500 Words</h2>
- <p>${esc(d.reflection||'[PASTE YOUR REFLECTION HERE BEFORE FINAL EXPORT]')}</p>
+ <div class="pdf-section">
+   <div class="pdf-section-title"><span class="num">06</span>Strategic Reflection</div>
+   <div class="reflection-box">${esc(d.reflection||'[PASTE YOUR REFLECTION HERE BEFORE FINAL EXPORT]')}</div>
+ </div>
+ <div class="pdf-footer-note">Industry Intelligence Pipeline · Source-grounded output generated from analyst-supplied reports</div>
  `;
 }
 $('preview').onclick=()=>{buildOutput();$('output').style.display='block';$('output').scrollIntoView({behavior:'smooth'})};
