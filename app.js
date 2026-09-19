@@ -254,21 +254,31 @@ function extractNaics(){
 }
 
 function extractSizeGrowth(){
- if(!primary)return {value:'',source:'',ev:[]};
- const ev=bestPages(['revenue','cagr','forecast'],[primary],6,['At a Glance','Performance','Outlook']);
- let data=null;
- for(const e of ev){
-   const f=flat(e.snippet);
-   const rev=f.match(/Revenue\s+\$?\s*(\d+(?:\.\d+)?)\s*(bn|billion|m|million)/i);
-   const rates=[...f.matchAll(/(20\d{2})\s*[-–]\s*(\d{2,4})\s+[^%]{0,15}?(\d+(?:\.\d+)?)\s*%/g)];
-   if(rev && rates.length>=2){data={rev:`$${rev[1]}${rev[2].toLowerCase().startsWith('b')?'bn':'m'}`,r1:rates[0],r2:rates[1],e};break}
- }
- if(data){
-   const endYear=String(data.r2[2]).length===2?String(data.r2[1]).slice(0,2)+data.r2[2]:data.r2[2];
-   const value=`${primary.title} reports current industry revenue of ${data.rev}. Historical five-year revenue CAGR was ${data.r1[3]}% for ${data.r1[1]}–${data.r1[2]}, and forecast five-year CAGR is ${data.r2[3]}% for ${data.r2[1]}–${endYear}.`;
-   return {value,source:citation(data.e),ev};
- }
- return {value:ev.length?evidenceSnippet(ev[0],signalDefs[0].keys):'',source:ev[0]?citation(ev[0]):'',ev};
+  if(!primary)return {value:'',source:'',ev:[]};
+  const p=primary.pages.find(function(p){
+    const f=flat(p.text);
+    return /At a Glance/i.test(f)&&/Major Players/i.test(f)&&/Revenue\s+\$?\s*\d/i.test(f);
+  });
+  if(!p)return {value:'Not found in provided sources.',source:'Not found in provided sources.',ev:[]};
+  const f=flat(p.text);
+  const rev=f.match(/Revenue\s+\$?\s*(\d+(?:\.\d+)?)\s*(bn|billion|m|million)/i);
+  const rates=[...f.matchAll(/(20\d{2})\s*[-–]\s*(\d{2,4})\s+[^0-9%]{0,18}(\d+(?:\.\d+)?)\s*%/g)];
+  const profit=f.match(/Profit\s+\$?\s*(\d+(?:\.\d+)?)\s*(bn|billion|m|million)/i);
+  const margin=f.match(/Profit Margin\s+(\d+(?:\.\d+)?)\s*%/i);
+  const val=[];
+  if(rev)val.push('2026 industry revenue: $'+rev[1]+(rev[2].toLowerCase().startsWith('b')?'bn':'m'));
+  if(rates[0]){
+    const end0=String(rates[0][2]).length===2?String(rates[0][1]).slice(0,2)+rates[0][2]:rates[0][2];
+    val.push('historic '+rates[0][1]+'–'+end0+' CAGR: '+rates[0][3]+'%');
+  }
+  if(rates[1]){
+    const end1=String(rates[1][2]).length===2?String(rates[1][1]).slice(0,2)+rates[1][2]:rates[1][2];
+    val.push('forecast '+rates[1][1]+'–'+end1+' CAGR: '+rates[1][3]+'%');
+  }
+  if(profit)val.push('profit: $'+profit[1]+(profit[2].toLowerCase().startsWith('b')?'bn':'m'));
+  if(margin)val.push('profit margin: '+margin[1]+'%');
+  const e=pageEvidence({...p,doc:primary.name,title:primary.title,section:'At a Glance'},f);
+  return {value:val.join('; ')+'.',source:citation(e),ev:[e]};
 }
 function parseMajorMarkets(){
  if(!primary)return null;
